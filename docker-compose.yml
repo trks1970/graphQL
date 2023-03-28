@@ -1,0 +1,85 @@
+version: "3"
+
+services:
+
+  database:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: database
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: Password.1
+    ports:
+      - "1433:1433"
+    volumes:
+      - database-data:/var/lib/mssql # persist data even if container shuts down
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P Password.1 -Q "SELECT 1" -b -o /dev/null
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  rabbitmq:
+      image: rabbitmq:3-management-alpine
+      container_name: rabbitmq
+      volumes:
+        - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+        - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      ports:
+          - 5672:5672
+          - 15672:15672
+      healthcheck:
+        test: rabbitmq-diagnostics -q ping
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 10s
+
+  seq:
+    image: datalust/seq
+    container_name: seq
+    environment:
+      ACCEPT_EULA: "Y"
+    ports:
+      - 8081:80
+      - 5341:5341
+    volumes:
+      - seq-data:/var/lib/seq # persist data even if container shuts down
+
+  seq-input-gelf-udp:
+    image: datalust/seq-input-gelf:latest
+    container_name: seq-input-gelf-udp
+    restart: unless-stopped
+    environment:
+      SEQ_ADDRESS: "http://seq:5341"
+    ports:
+      - 12201:12201/udp
+    depends_on:
+      - seq
+
+  eb-service:
+      image: eb-service:latest
+      container_name: eb-service
+      environment:
+        SPRING_PROFILES_ACTIVE: docker
+      ports:
+        - "8443:8443"
+      depends_on:
+        database:
+          condition: service_healthy
+        rabbitmq:
+          condition: service_healthy
+#      deploy:
+#        resources:
+#          limits:
+#            cpus: '0.25'
+#            memory: 256M
+#          reservations:
+#            cpus: '0.125'
+#            memory: 256M
+volumes:
+  database-data: # named volumes can be managed easier using docker-compose
+  seq-data:
+networks:
+  default:
+    name: local_development_network

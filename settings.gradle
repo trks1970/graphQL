@@ -1,0 +1,13 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+    }
+}
+
+rootProject.name = 'graphql-poc'
+include 'common'
+include 'graphql-java'
+include 'netflix-dgs'
+
+
+
