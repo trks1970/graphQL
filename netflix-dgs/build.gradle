@@ -1,0 +1,160 @@
+plugins {
+    id "java"
+    id "org.springframework.boot"
+    id "io.spring.dependency-management"
+    id "jacoco"
+    id "org.sonarqube"
+    id "com.google.cloud.tools.jib"
+    id 'checkstyle'
+    id "com.diffplug.spotless"
+
+}
+
+var appMainClass = "com.shashir.neflixdgsgraphqljavaapp.NeflixdgsGraphqlJavaappApplication"
+
+dependencies {
+    // Spring
+    implementation "org.springframework.boot:spring-boot-starter-web"
+    implementation "org.springframework.boot:spring-boot-starter-data-jpa"
+    implementation "com.netflix.graphql.dgs:graphql-dgs-spring-boot-starter:6.0.1"
+
+    // see: https://stackoverflow.com/questions/53326271/spring-nullable-annotation-generates-unknown-enum-constant-warning
+    implementation "com.google.code.findbugs:jsr305:${versions.jsr305}"
+
+    // Excel
+    implementation 'com.github.ozlerhakan:poiji:3.1.9'
+
+    // Database
+    // implementation 'org.postgresql:postgresql:42.5.1'
+    // https://mvnrepository.com/artifact/com.microsoft.sqlserver/mssql-jdbc
+    implementation 'com.microsoft.sqlserver:mssql-jdbc:11.2.1.jre17'
+
+    implementation "org.liquibase:liquibase-core"
+
+    // MapStruct
+    implementation "org.mapstruct:mapstruct:${versions.mapstruct}"
+    testImplementation 'junit:junit:4.13.1'
+
+    //Lombok
+    compileOnly "org.projectlombok:lombok:${versions.lombok}"
+
+    // https://mvnrepository.com/artifact/de.siegmar/logback-gelf
+    implementation 'de.siegmar:logback-gelf:4.0.2'
+
+
+
+    implementation 'commons-io:commons-io:2.11.0'
+
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+    annotationProcessor "org.hibernate.orm:hibernate-jpamodelgen"
+    annotationProcessor "org.projectlombok:lombok-mapstruct-binding:0.2.0"
+    annotationProcessor "org.mapstruct:mapstruct-processor:${versions.mapstruct}"
+    annotationProcessor "org.projectlombok:lombok:${versions.lombok}"
+
+    // TEST
+    testImplementation "org.springframework.boot:spring-boot-starter-test"
+    testImplementation "org.springframework.security:spring-security-test"
+    testImplementation "com.h2database:h2:2.1.214"
+
+    testImplementation "org.assertj:assertj-core:3.23.1"
+    testImplementation "com.tngtech.archunit:archunit-junit5:1.0.0"
+    testImplementation "com.github.database-rider:rider-junit5:1.35.0"
+    testCompileOnly "org.projectlombok:lombok:1.18.24"
+    testAnnotationProcessor "org.projectlombok:lombok:1.18.24"
+}
+
+spotless {
+    java {
+        importOrder()
+        removeUnusedImports()
+        googleJavaFormat()
+    }
+}
+
+checkstyle {
+    ignoreFailures = false
+    configFile = file("${rootProject.rootDir}/checkstyle/google_checks.xml")
+    configProperties = [samedir: "${rootProject.rootDir}/checkstyle"]
+    toolVersion = "${versions.checkStyle}"
+}
+
+compileJava {
+    options.compilerArgs += "-Amapstruct.defaultComponentModel=spring"
+    options.compilerArgs += "-Amapstruct.unmappedTargetPolicy=ERROR"
+    // options.compilerArgs += ["-Xlint:unchecked"]
+}
+compileJava.dependsOn 'spotlessApply'
+
+springBoot {
+    mainClass = appMainClass
+}
+
+jar {
+    enabled = false
+}
+
+jacocoTestReport {
+    reports {
+        xml.enabled true
+    }
+}
+
+test {
+    testLogging.showStandardStreams = true
+    useJUnitPlatform {
+        excludeTags "dataExport"
+        excludeTags "integrationTest"
+    }
+}
+tasks.register("dataExport", Test) {
+    useJUnitPlatform {
+        includeTags "dataExport"
+    }
+}
+tasks.register("integrationTest", Test) {
+    useJUnitPlatform {
+        includeTags "integrationTest"
+    }
+}
+test.finalizedBy jacocoTestReport
+
+// see: https://community.sonarsource.com/t/unresolved-imports-types-have-been-detected-during-analysis/43321
+sonar {
+    properties {
+        property "sonar.host.url", "http://localhost:9000"
+        property "sonar.login", "admin"
+        // you have to set this manually in sonar
+        property "sonar.password", "tkrt"
+    }
+}
+tasks.named("sonar").configure {
+    dependsOn test
+}
+
+// Jib--
+jib {
+    from {
+        image = "amazoncorretto:17-alpine-jdk"
+    }
+    container {
+        mainClass = appMainClass
+        setCreationTime("USE_CURRENT_TIMESTAMP")
+        jvmFlags = ["-Xms128m","-Xmx1024m"]
+    }
+}
+// local build with docker
+tasks.jibDockerBuild {
+    jib {
+        to {
+            image = "eb-service"
+            tags = ["${project.version}"]
+        }
+        container {
+            mainClass = appMainClass
+            setCreationTime("USE_CURRENT_TIMESTAMP")
+            jvmFlags = ["-Xms128m","-Xmx1024m"]
+        }
+    }
+}
+// --Jib
+
